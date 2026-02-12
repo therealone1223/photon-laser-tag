@@ -7,8 +7,9 @@ import tkinter as tk
 from PIL import Image, ImageTk
 import os
 class SplashScreen:
-    def __init__(self,root, duration = 3000):
+    def __init__(self, root, duration=3000, on_close=None):
         self.root = root
+        self.on_close = on_close
         self.root.title("Photon Laser Tag")
         
         #photoGet screen dimensions 
@@ -51,13 +52,8 @@ class SplashScreen:
         self.root.after(duration,self.close_splash)
     def close_splash(self):
         self.root.destroy()
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    #Screen last 3 seconds
-    splash = SplashScreen(root, duration = 3000)
- 
-    root.mainloop()
+        if self.on_close:
+            self.on_close()
 
             
 
