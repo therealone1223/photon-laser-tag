@@ -6,51 +6,26 @@ echo "Software Engineering"
 echo "======================================"
 echo ""
 
-echo "Installing system dependencies..."
+set -e
+cd "$(dirname "$0")"
+
 sudo apt update
-sudo apt upgrade -y
+sudo apt install -y \
+  python3 python3-tk \
+  python3-pil python3-pil.imagetk \
+  python3-psycopg2 \
+  postgresql
 
-echo ""
-echo "Installing Python3 and pip..."
-sudo apt install python3 python3-pip python3-tk -y
-
-echo ""
-echo "Verifying Python installation..."
-python3 --version
-
-echo ""
-echo "Installing PostgreSQL and dependencies..."
-sudo apt-get update
-sudo apt-get install postgresql libpq-dev -y
-sudo apt-get install python3-psycopg2 python3-pil python3-pil.imagetk -y
-
-echo ""
-echo "Installing Python packages..."
-pip install psycopg2
-
-echo ""
-echo "Starting PostgreSQL service..."
+sudo systemctl enable postgresql >/dev/null 2>&1 || true
 sudo systemctl start postgresql
-sudo systemctl enable postgresql
 
-echo ""
-echo "Setting up database..."
-sudo -u postgres psql << PSQL_EOF
-CREATE DATABASE photon;
-\c photon
-CREATE TABLE IF NOT EXISTS players (
-    id INTEGER PRIMARY KEY,
-    codename VARCHAR(255)
-);
-GRANT ALL PRIVILEGES ON DATABASE photon TO student;
-PSQL_EOF
+sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='photon';" | grep -q 1 \
+  || sudo -u postgres createdb photon
 
-echo ""
-echo "======================================"
-echo "Installation Complete!"
-echo "======================================"
-echo ""
-echo "To run the application:"
-echo "  cd src"
-echo "  python3 main.py"
-echo ""
+if [ -f "player.sql" ]; then
+  sudo -u postgres psql photon -f player.sql
+else
+  sudo -u postgres psql photon -c "CREATE TABLE IF NOT EXISTS players (id INTEGER PRIMARY KEY, codename VARCHAR(255));"
+fi
+
+echo "Install complete. Run: python3 src/main.py"
