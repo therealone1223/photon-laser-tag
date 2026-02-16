@@ -9,7 +9,25 @@ Software Engineering project for Jim Strother
 
 Make sure you have Python3 installed. Make sure you have updated PostgreSQL. Make sure you have psycopg2 installed. Make sure you have Tkinter installed. Make sure you have Pillow (PIL) installed.
 
-To do the above steps, run these in your Linux terminal and enter Y when prompted (you might need to enter your password, for us, it is student):
+You can install dependencies automatically using the included install script (recommended), or manually using the steps below.
+
+---
+
+### OPTION 1: Automatic Installation Script (Recommended)
+
+The install script will automatically install all required dependencies, configure PostgreSQL, and create the required database and table.
+
+Run the following in your Linux terminal:
+
+```bash
+cd photon-laser-tag
+chmod +x install.sh
+./install.sh
+```
+
+### OPTION 2: Manual Installation
+
+To do the above steps manually, run these in your Linux terminal and enter Y when prompted (you might need to enter your password, for us, it is student):
 ```bash
 sudo apt update
 sudo apt upgrade
