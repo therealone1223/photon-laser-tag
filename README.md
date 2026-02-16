@@ -99,16 +99,16 @@ CREATE TABLE IF NOT EXISTS players (
 ## Project Structure
 ```
 photon-main/
-├── src/
-│   ├── main.py              # Main application entry point
-│   ├── splash_screen.py     # Splash screen with logo
-│   ├── player_entry.py      # Player registration interface
-│   └── udp_comm.py          # UDP communication handler
-├── udp_files/               # UDP examples and documentation
-├── logo.jpg                 # Application logo
-├── player.sql               # Database schema
-├── README.md                # This file
-└── install.sh               # Installation script
+|- src/
+|-  |- main.py              # Main application entry point
+│   |- splash_screen.py     # Splash screen with logo
+│   |- player_entry.py      # Player registration interface
+│   |- udp_comm.py          # UDP communication handler
+|- udp_files/               # UDP examples and documentation
+|- logo.jpg                 # Application logo
+|- player.sql               # Database schema
+|- README.md                # This file
+|- install.sh               # Installation script
 ```
 
 ## Features Completed (Sprint 2)
