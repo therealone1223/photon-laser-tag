@@ -8,6 +8,12 @@ class PlayerEntry:
         self.root.title("Photon - Edit Current Game")
         self.root.geometry("1200x700")
         self.root.configure(bg='black')
+
+        # Bind F12 to clear all players
+        self.root.bind("<F12>", lambda event: self.clear_all_players())
+
+        # Bind F5 to start game
+        self.root.bind("<F5>", lambda event: self.start_game())
         
         # Database connection parameters
         self.db_params = {
