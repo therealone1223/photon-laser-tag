@@ -1,296 +1,208 @@
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox
 import psycopg2
 from udp_comm import UDPComm
+
+
 class PlayerEntry:
     def __init__(self, root):
         self.root = root
         self.root.title("Photon - Edit Current Game")
-        self.root.geometry("1200x700")
+        self.root.geometry("1400x750")
         self.root.configure(bg='black')
 
-        # Bind F12 to clear all players
         self.root.bind("<F12>", lambda event: self.clear_all_players())
-
-        # Bind F5 to start game
         self.root.bind("<F5>", lambda event: self.start_game())
-        
-        # Database connection parameters
+
         self.db_params = {
             'dbname': 'photon',
             'user': 'student'
         }
-        
-        # UDP communication using teammate's code
-        self.udp_comm = UDPComm(ip="127.0.0.1", send_port=7500, recv_port=7501, enable_receive=False)
-        
-        # Player entry fields (storing Entry widgets)
-        self.red_team_ids = []
-        self.red_team_names = []
-        self.green_team_ids = []
-        self.green_team_names = []
-        
-        # Setup UI
+
+        self.udp_comm = UDPComm(
+            ip="127.0.0.1",
+            send_port=7500,
+            recv_port=7501,
+            enable_receive=False
+        )
+
+        # Each slot stores (hardware_id_entry, player_id_entry, name_entry)
+        self.red_team_slots = []
+        self.green_team_slots = []
+
         self.setup_ui()
-        
+
+    # ------------------------------------------------------------------ #
+    #  UI SETUP                                                            #
+    # ------------------------------------------------------------------ #
+
     def setup_ui(self):
-        """Create the main UI layout"""
-        
-        # Title
-        title_label = tk.Label(
+        tk.Label(
             self.root,
             text="Edit Current Game",
             font=("Arial", 24, "bold"),
             fg="white",
             bg="black"
-        )
-        title_label.pack(pady=10)
-        
-        # Main frame for teams
+        ).pack(pady=10)
+
         teams_frame = tk.Frame(self.root, bg='black')
         teams_frame.pack(expand=True, fill='both', padx=20, pady=10)
-        
-        # Red Team Frame
+
+        # --- Red team ---
         red_frame = tk.Frame(teams_frame, bg='#8B0000', relief='raised', bd=3)
         red_frame.grid(row=0, column=0, padx=10, sticky='nsew')
-        
-        red_label = tk.Label(
-            red_frame,
-            text="RED TEAM",
-            font=("Arial", 18, "bold"),
-            fg="white",
-            bg='#8B0000'
-        )
-        red_label.pack(pady=10)
-        
-        # Create 15 player slots for red team
+
+        tk.Label(
+            red_frame, text="RED TEAM",
+            font=("Arial", 18, "bold"), fg="white", bg='#8B0000'
+        ).pack(pady=(10, 0))
+
+        self._make_column_headers(red_frame, '#8B0000')
+
         for i in range(15):
             self.create_player_slot(red_frame, i, 'red')
-        
-        # Green Team Frame
+
+        # --- Green team ---
         green_frame = tk.Frame(teams_frame, bg='#006400', relief='raised', bd=3)
         green_frame.grid(row=0, column=1, padx=10, sticky='nsew')
-        
-        green_label = tk.Label(
-            green_frame,
-            text="GREEN TEAM",
-            font=("Arial", 18, "bold"),
-            fg="white",
-            bg='#006400'
-        )
-        green_label.pack(pady=10)
-        
-        # Create 15 player slots for green team
+
+        tk.Label(
+            green_frame, text="GREEN TEAM",
+            font=("Arial", 18, "bold"), fg="white", bg='#006400'
+        ).pack(pady=(10, 0))
+
+        self._make_column_headers(green_frame, '#006400')
+
         for i in range(15):
             self.create_player_slot(green_frame, i, 'green')
-        
-        # Configure grid weights
+
         teams_frame.columnconfigure(0, weight=1)
         teams_frame.columnconfigure(1, weight=1)
         teams_frame.rowconfigure(0, weight=1)
-        
-        # Button Frame
+
+        # --- Buttons ---
         button_frame = tk.Frame(self.root, bg='black')
         button_frame.pack(pady=20)
-        
-        # Add Player Button
-        add_button = tk.Button(
-            button_frame,
-            text="Add Players to DB",
-            font=("Arial", 12, "bold"),
-            bg="#00FF00",
-            fg="black",
-            command=self.add_all_players,
-            width=18,
-            height=2
-        )
-        add_button.grid(row=0, column=0, padx=10)
-        
-        # Delete Players Button
-        delete_button = tk.Button(
-            button_frame,
-            text="Clear All Players",
-            font=("Arial", 12, "bold"),
-            bg="#FF4444",
-            fg="white",
-            command=self.clear_all_players,
-            width=18,
-            height=2
-        )
-        delete_button.grid(row=0, column=1, padx=10)
-        
-        # Change Socket Button
-        socket_button = tk.Button(
-            button_frame,
-            text="Change Socket Settings",
-            font=("Arial", 12, "bold"),
-            bg="#4444FF",
-            fg="white",
-            command=self.change_socket_settings,
-            width=18,
-            height=2
-        )
-        socket_button.grid(row=0, column=2, padx=10)
-        
-        # Start Game Button
-        start_button = tk.Button(
-            button_frame,
-            text="START GAME",
-            font=("Arial", 14, "bold"),
-            bg="#FFD700",
-            fg="black",
-            command=self.start_game,
-            width=18,
-            height=2
-        )
-        start_button.grid(row=1, column=0, columnspan=3, pady=10)
-        
+
+        btn_cfg = {"font": ("Arial", 12, "bold"), "width": 18, "height": 2}
+
+        tk.Button(
+            button_frame, text="Add Players to DB",
+            bg="#00FF00", fg="black",
+            command=self.add_all_players, **btn_cfg
+        ).grid(row=0, column=0, padx=10)
+
+        tk.Button(
+            button_frame, text="Clear All Players",
+            bg="#FF4444", fg="white",
+            command=self.clear_all_players, **btn_cfg
+        ).grid(row=0, column=1, padx=10)
+
+        tk.Button(
+            button_frame, text="Change Socket Settings",
+            bg="#4444FF", fg="white",
+            command=self.change_socket_settings, **btn_cfg
+        ).grid(row=0, column=2, padx=10)
+
+        tk.Button(
+            button_frame, text="START GAME (F5)",
+            font=("Arial", 14, "bold"), bg="#FFD700", fg="black",
+            command=self.start_game, width=18, height=2
+        ).grid(row=1, column=0, columnspan=3, pady=10)
+
+    def _make_column_headers(self, parent, bg):
+        """Column header row: #  |  HW ID  |  Player ID  |  Codename"""
+        hdr = tk.Frame(parent, bg=bg)
+        hdr.pack(fill='x', padx=10, pady=(2, 0))
+
+        for text, width in [("#", 3), ("HW ID", 8), ("Player ID", 9), ("Codename", 20)]:
+            tk.Label(
+                hdr, text=text,
+                font=("Arial", 9, "underline"),
+                fg="white", bg=bg, width=width, anchor='w'
+            ).pack(side='left', padx=3)
+
+    # ------------------------------------------------------------------ #
+    #  PLAYER SLOT                                                         #
+    # ------------------------------------------------------------------ #
+
     def create_player_slot(self, parent, index, team):
-        """Create a player entry slot"""
         slot_frame = tk.Frame(parent, bg=parent['bg'])
-        slot_frame.pack(fill='x', padx=10, pady=2)
-        
-        # Player number label
-        num_label = tk.Label(
+        slot_frame.pack(fill='x', padx=10, pady=1)
+
+        tk.Label(
             slot_frame,
             text=f"{index + 1:2d}.",
-            font=("Arial", 10),
-            fg="white",
-            bg=parent['bg'],
-            width=3
-        )
-        num_label.pack(side='left')
-        
-        # ID Entry
-        id_entry = tk.Entry(
-            slot_frame,
-            font=("Arial", 10),
-            width=8,
-            bg='white'
-        )
-        id_entry.pack(side='left', padx=5)
-        
-        # Codename Entry
-        name_entry = tk.Entry(
-            slot_frame,
-            font=("Arial", 10),
-            width=20,
-            bg='white'
-        )
-        name_entry.pack(side='left', padx=5)
-        
-        # Store references
+            font=("Arial", 10), fg="white", bg=parent['bg'], width=3
+        ).pack(side='left')
+
+        # Hardware / Equipment ID  ← NEW field
+        hw_entry = tk.Entry(slot_frame, font=("Arial", 10), width=8, bg='#ffe0e0')
+        hw_entry.pack(side='left', padx=3)
+
+        # Player ID — triggers DB lookup on <Tab> / <Return>
+        pid_entry = tk.Entry(slot_frame, font=("Arial", 10), width=9, bg='white')
+        pid_entry.pack(side='left', padx=3)
+
+        # Codename
+        name_entry = tk.Entry(slot_frame, font=("Arial", 10), width=20, bg='white')
+        name_entry.pack(side='left', padx=3)
+
+        # Look up codename when player ID field loses focus or Enter pressed
+        lookup = lambda event, p=pid_entry, n=name_entry: self.lookup_player(p, n)
+        pid_entry.bind("<FocusOut>", lookup)
+        pid_entry.bind("<Return>", lookup)
+
+        slot = (hw_entry, pid_entry, name_entry)
         if team == 'red':
-            self.red_team_ids.append(id_entry)
-            self.red_team_names.append(name_entry)
+            self.red_team_slots.append(slot)
         else:
-            self.green_team_ids.append(id_entry)
-            self.green_team_names.append(name_entry)
-    
-    def add_all_players(self):
-        """Add all entered players to database and broadcast"""
-        added_count = 0
-        
-        # Add red team players
-        for i in range(15):
-            player_id = self.red_team_ids[i].get().strip()
-            codename = self.red_team_names[i].get().strip()
-            
-            if player_id and codename:
-                try:
-                    player_id = int(player_id)
-                    if self.add_to_database(player_id, codename):
-                        self.broadcast_equipment_code(player_id)
-                        added_count += 1
-                except ValueError:
-                    messagebox.showerror("Error", f"Red team slot {i+1}: ID must be a number")
-        
-        # Add green team players
-        for i in range(15):
-            player_id = self.green_team_ids[i].get().strip()
-            codename = self.green_team_names[i].get().strip()
-            
-            if player_id and codename:
-                try:
-                    player_id = int(player_id)
-                    if self.add_to_database(player_id, codename):
-                        self.broadcast_equipment_code(player_id)
-                        added_count += 1
-                except ValueError:
-                    messagebox.showerror("Error", f"Green team slot {i+1}: ID must be a number")
-        
-        if added_count > 0:
-            messagebox.showinfo("Success", f"Added {added_count} players to database!")
-        else:
-            messagebox.showwarning("Warning", "No players to add")
-    
-    def clear_all_players(self):
-        """Clear all player entries"""
-        if messagebox.askyesno("Confirm", "Clear all player entries?"):
-            for entry in self.red_team_ids + self.red_team_names + self.green_team_ids + self.green_team_names:
-                entry.delete(0, tk.END)
-            messagebox.showinfo("Cleared", "All player entries cleared")
-    
-    def change_socket_settings(self):
-        """Open dialog to change UDP socket settings"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Socket Settings")
-        dialog.geometry("400x250")
-        dialog.configure(bg='#2a2a2a')
-        
-        # IP setting
-        tk.Label(dialog, text="IP Address:", fg="white", bg='#2a2a2a', font=("Arial", 12)).pack(pady=10)
-        ip_entry = tk.Entry(dialog, font=("Arial", 12))
-        ip_entry.insert(0, self.udp_comm.ip)
-        ip_entry.pack(pady=5)
-        
-        # Send Port setting
-        tk.Label(dialog, text="Send Port:", fg="white", bg='#2a2a2a', font=("Arial", 12)).pack(pady=10)
-        send_port_entry = tk.Entry(dialog, font=("Arial", 12))
-        send_port_entry.insert(0, str(self.udp_comm.send_port))
-        send_port_entry.pack(pady=5)
-        
-        # Receive Port setting
-        tk.Label(dialog, text="Receive Port:", fg="white", bg='#2a2a2a', font=("Arial", 12)).pack(pady=10)
-        recv_port_entry = tk.Entry(dialog, font=("Arial", 12))
-        recv_port_entry.insert(0, str(self.udp_comm.recv_port))
-        recv_port_entry.pack(pady=5)
-        
-        def save_settings():
-            new_ip = ip_entry.get()
-            new_send_port = int(send_port_entry.get())
-            new_recv_port = int(recv_port_entry.get())
-            
-            # Recreate UDPComm with new settings
-            self.udp_comm = UDPComm(ip=new_ip, send_port=new_send_port, recv_port=new_recv_port, enable_receive=False)
-            
-            messagebox.showinfo("Saved", f"Socket settings updated!\nIP: {new_ip}\nSend Port: {new_send_port}\nReceive Port: {new_recv_port}")
-            dialog.destroy()
-        
-        tk.Button(dialog, text="Save", command=save_settings, bg="#00FF00", font=("Arial", 12)).pack(pady=20)
-    
-    def start_game(self):
-        """Start the game"""
-        # Count how many players are entered
-        red_count = sum(1 for entry in self.red_team_ids if entry.get().strip())
-        green_count = sum(1 for entry in self.green_team_ids if entry.get().strip())
-        
-        if red_count == 0 and green_count == 0:
-            messagebox.showerror("Error", "No players entered! Add players first.")
+            self.green_team_slots.append(slot)
+
+    # ------------------------------------------------------------------ #
+    #  DATABASE OPERATIONS                                                 #
+    # ------------------------------------------------------------------ #
+
+    def _get_connection(self):
+        return psycopg2.connect(**self.db_params)
+
+    def lookup_player(self, pid_entry, name_entry):
+        """Retrieve codename from DB when a player ID is entered."""
+        raw = pid_entry.get().strip()
+        if not raw:
             return
-        
-        if messagebox.askyesno("Start Game", f"Start game with {red_count} red and {green_count} green players?"):
-            messagebox.showinfo("Game Started", "Game is starting!")
-            # Here you would transition to the game screen
-            print("Game started!")
-    
-    def add_to_database(self, player_id, codename):
-        """Add player to PostgreSQL database"""
+
         try:
-            conn = psycopg2.connect(**self.db_params)
+            player_id = int(raw)
+        except ValueError:
+            return  # not a valid ID yet; ignore silently
+
+        try:
+            conn = self._get_connection()
             cursor = conn.cursor()
-            
-            # Check if player already exists
+            cursor.execute("SELECT codename FROM players WHERE id = %s", (player_id,))
+            row = cursor.fetchone()
+            cursor.close()
+            conn.close()
+
+            if row:
+                # Auto-fill codename (only if the field is empty to avoid overwriting manual input)
+                if not name_entry.get().strip():
+                    name_entry.delete(0, tk.END)
+                    name_entry.insert(0, row[0])
+                    print(f"Loaded from DB: ID={player_id}, Codename={row[0]}")
+            else:
+                print(f"Player ID {player_id} not found in DB — new player")
+
+        except Exception as e:
+            print(f"DB lookup error: {e}")
+
+    def add_to_database(self, player_id, codename):
+        """Insert or update a player record."""
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+
             cursor.execute("SELECT id FROM players WHERE id = %s", (player_id,))
             if cursor.fetchone():
                 cursor.execute(
@@ -302,24 +214,151 @@ class PlayerEntry:
                     "INSERT INTO players (id, codename) VALUES (%s, %s)",
                     (player_id, codename)
                 )
-            
+
             conn.commit()
             cursor.close()
             conn.close()
-            
-            print(f"Added to database: ID={player_id}, Codename={codename}")
+            print(f"DB write: ID={player_id}, Codename={codename}")
             return True
-            
+
         except Exception as e:
             print(f"Database error: {e}")
             return False
-    
+
+    # ------------------------------------------------------------------ #
+    #  UDP BROADCAST                                                       #
+    # ------------------------------------------------------------------ #
+
     def broadcast_equipment_code(self, equipment_id):
-        """Broadcast equipment code via UDP using teammate's UDPComm"""
+        """Broadcast the HARDWARE / equipment ID — not the player ID."""
         try:
             self.udp_comm.broadcast_equipment_id(equipment_id)
+            print(f"Broadcast hardware ID: {equipment_id}")
         except Exception as e:
             print(f"UDP broadcast error: {e}")
+
+    # ------------------------------------------------------------------ #
+    #  BUTTON ACTIONS                                                      #
+    # ------------------------------------------------------------------ #
+
+    def add_all_players(self):
+        added_count = 0
+        errors = []
+
+        for team_label, slots in [("Red", self.red_team_slots), ("Green", self.green_team_slots)]:
+            for i, (hw_entry, pid_entry, name_entry) in enumerate(slots, start=1):
+                hw_raw = hw_entry.get().strip()
+                pid_raw = pid_entry.get().strip()
+                codename = name_entry.get().strip()
+
+                # Skip completely empty rows
+                if not hw_raw and not pid_raw and not codename:
+                    continue
+
+                # Validate hardware ID
+                if not hw_raw:
+                    errors.append(f"{team_label} slot {i}: Hardware ID is required")
+                    continue
+
+                # Validate player ID
+                if not pid_raw:
+                    errors.append(f"{team_label} slot {i}: Player ID is required")
+                    continue
+
+                if not codename:
+                    errors.append(f"{team_label} slot {i}: Codename is required")
+                    continue
+
+                try:
+                    hw_id = int(hw_raw)
+                except ValueError:
+                    errors.append(f"{team_label} slot {i}: Hardware ID must be a number")
+                    continue
+
+                try:
+                    player_id = int(pid_raw)
+                except ValueError:
+                    errors.append(f"{team_label} slot {i}: Player ID must be a number")
+                    continue
+
+                if self.add_to_database(player_id, codename):
+                    self.broadcast_equipment_code(hw_id)   # ← broadcast HW ID
+                    added_count += 1
+
+        if errors:
+            messagebox.showerror("Input Errors", "\n".join(errors))
+
+        if added_count > 0:
+            messagebox.showinfo("Success", f"Added/updated {added_count} player(s) in database.")
+        elif not errors:
+            messagebox.showwarning("Warning", "No players to add.")
+
+    def clear_all_players(self):
+        if messagebox.askyesno("Confirm", "Clear all player entries? (F12)"):
+            for slots in (self.red_team_slots, self.green_team_slots):
+                for hw_e, pid_e, name_e in slots:
+                    hw_e.delete(0, tk.END)
+                    pid_e.delete(0, tk.END)
+                    name_e.delete(0, tk.END)
+
+    def start_game(self):
+        red_count = sum(
+            1 for _, pid_e, _ in self.red_team_slots if pid_e.get().strip()
+        )
+        green_count = sum(
+            1 for _, pid_e, _ in self.green_team_slots if pid_e.get().strip()
+        )
+
+        if red_count == 0 and green_count == 0:
+            messagebox.showerror("Error", "No players entered! Add players first.")
+            return
+
+        if messagebox.askyesno(
+            "Start Game",
+            f"Start game with {red_count} red and {green_count} green players?"
+        ):
+            print("Game started!")
+            # TODO: transition to game/action screen
+
+    def change_socket_settings(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Socket Settings")
+        dialog.geometry("400x280")
+        dialog.configure(bg='#2a2a2a')
+
+        fields = {}
+        for label, default in [
+            ("IP Address", self.udp_comm.ip),
+            ("Send Port", str(self.udp_comm.send_port)),
+            ("Receive Port", str(self.udp_comm.recv_port)),
+        ]:
+            tk.Label(dialog, text=label, fg="white", bg='#2a2a2a',
+                     font=("Arial", 11)).pack(pady=(10, 0))
+            e = tk.Entry(dialog, font=("Arial", 11))
+            e.insert(0, default)
+            e.pack(pady=3)
+            fields[label] = e
+
+        def save():
+            try:
+                new_ip = fields["IP Address"].get()
+                new_sp = int(fields["Send Port"].get())
+                new_rp = int(fields["Receive Port"].get())
+                self.udp_comm = UDPComm(
+                    ip=new_ip, send_port=new_sp, recv_port=new_rp,
+                    enable_receive=False
+                )
+                messagebox.showinfo(
+                    "Saved",
+                    f"Socket updated\nIP: {new_ip}  Send: {new_sp}  Recv: {new_rp}"
+                )
+                dialog.destroy()
+            except ValueError:
+                messagebox.showerror("Error", "Ports must be integers.")
+
+        tk.Button(dialog, text="Save", command=save,
+                  bg="#00FF00", font=("Arial", 12), width=10).pack(pady=20)
+
 
 if __name__ == "__main__":
     root = tk.Tk()
