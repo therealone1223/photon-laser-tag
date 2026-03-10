@@ -53,27 +53,7 @@ REQUIRED:
 pip install psycopg2
 ```
 
-### Setup Database
 
-Run these commands to set up the database:
-```bash
-sudo systemctl start postgresql
-psql -U student -d photon
-```
-
-If the database doesn't exist, create it:
-```bash
-sudo -u postgres createdb photon
-sudo -u postgres psql photon -c "GRANT ALL PRIVILEGES ON DATABASE photon TO student;"
-```
-
-Create the players table:
-```sql
-CREATE TABLE IF NOT EXISTS players (
-    id INTEGER PRIMARY KEY,
-    codename VARCHAR(255)
-);
-```
 
 ## TO RUN
 
