@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import messagebox
 import psycopg2
 from udp_comm import UDPComm
-
+from game_display import GameDisplay
 
 class PlayerEntry:
     def __init__(self, root):
@@ -31,6 +31,7 @@ class PlayerEntry:
         self.green_team_slots = []
 
         self.setup_ui()
+        self.root.update_idletasks()
 
     # ------------------------------------------------------------------ #
     #  UI SETUP                                                            #
@@ -317,8 +318,23 @@ class PlayerEntry:
             "Start Game",
             f"Start game with {red_count} red and {green_count} green players?"
         ):
-            print("Game started!")
-            # TODO: transition to game/action screen
+
+            red_players = []
+            green_players = []
+
+            #Collect red tam player names
+            for _, _, name_e in self.red_team_slots:
+                name = name_e.get().strip()
+                if name:
+                    red_players.append(name)
+
+            #Collect green team player names
+            for _, _, name_e in self.green_team_slots:
+                name = name_e.get().strip()
+                if name:
+                    green_players.append(name)
+
+            GameDisplay(self.root, red_players, green_players)
 
     def change_socket_settings(self):
         dialog = tk.Toplevel(self.root)
