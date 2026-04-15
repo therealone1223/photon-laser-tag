@@ -26,6 +26,8 @@ class PlayerEntry:
             enable_receive=False
         )
 
+        self.processed_equipment = set()
+
         # Each slot stores (hardware_id_entry, player_id_entry, name_entry)
         self.red_team_slots = []
         self.green_team_slots = []
@@ -150,9 +152,12 @@ class PlayerEntry:
         name_entry.pack(side='left', padx=3)
 
         # Look up codename when player ID field loses focus or Enter pressed
-        lookup = lambda event, p=pid_entry, n=name_entry: self.lookup_player(p, n)
-        pid_entry.bind("<FocusOut>", lookup)
-        pid_entry.bind("<Return>", lookup)
+        def on_player_complete(event=None):
+            self.lookup_player(pid_entry, name_entry)
+            self.handle_single_player(hw_entry, pid_entry, name_entry)
+
+        pid_entry.bind("<FocusOut>", on_player_complete)
+        pid_entry.bind("<Return>", on_player_complete)
 
         slot = (hw_entry, pid_entry, name_entry)
         if team == 'red':
@@ -250,10 +255,10 @@ class PlayerEntry:
             for i, (hw_entry, pid_entry, name_entry) in enumerate(slots, start=1):
                 hw_raw = hw_entry.get().strip()
                 pid_raw = pid_entry.get().strip()
-                codename = name_entry.get().strip()
+                name = name_entry.get().strip()
 
                 # Skip completely empty rows
-                if not hw_raw and not pid_raw and not codename:
+                if not hw_raw and not pid_raw and not name:
                     continue
 
                 # Validate hardware ID
@@ -266,7 +271,7 @@ class PlayerEntry:
                     errors.append(f"{team_label} slot {i}: Player ID is required")
                     continue
 
-                if not codename:
+                if not name:
                     errors.append(f"{team_label} slot {i}: Codename is required")
                     continue
 
@@ -282,8 +287,11 @@ class PlayerEntry:
                     errors.append(f"{team_label} slot {i}: Player ID must be a number")
                     continue
 
-                if self.add_to_database(player_id, codename):
-                    self.broadcast_equipment_code(hw_id)   # ← broadcast HW ID
+                if hw_id in self.processed_equipment:
+                    continue
+
+                if self.add_to_database(player_id, name):
+                    self.processed_equipment.add(hw_id)
                     added_count += 1
 
         if errors:
@@ -293,6 +301,22 @@ class PlayerEntry:
             messagebox.showinfo("Success", f"Added/updated {added_count} player(s) in database.")
         elif not errors:
             messagebox.showwarning("Warning", "No players to add.")
+
+    def handle_single_player(self, hw_entry, pid_entry, name_entry):
+        hw_raw = hw_entry.get().strip()
+        pid_raw = pid_entry.get().strip()
+        name = name_entry.get().strip()
+
+        if not hw_raw or not pid_raw or not name:
+            return
+        try:
+            hw_id = int(hw_raw)
+            player_id = int(pid_raw)
+        except ValueError:
+            return
+
+        if self.add_to_database(player_id, name):
+            self.broadcast_equipment_code(hw_id)
 
     def clear_all_players(self):
         if messagebox.askyesno("Confirm", "Clear all player entries? (F12)"):
