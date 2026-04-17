@@ -1,11 +1,12 @@
 """
 game_display.py
-Photon Laser Tag – Sprint 3
+Photon Laser Tag – Sprint 4
 
 Play-action display window:
   • Opens as a Toplevel over the player-entry screen
   • Shows both team rosters with live score columns (ready for Sprint 4 events)
   • 30-second countdown with large animated timer
+  • Random MP3 music starts with the countdown, stops at game over
   • Broadcasts equipment ID 202 when timer reaches zero ("GO!")
   • UDP listener thread scaffolded for Sprint 4 hit events
   • Clean phase management: COUNTDOWN → PLAYING → GAME_OVER
@@ -16,6 +17,8 @@ from tkinter import font as tkfont
 import threading
 
 from udp_comm import UDPComm
+from music_player import MusicPlayer
+from music_player import MusicPlayer
 
 
 # ─── Layout constants ─────────────────────────────────────────────────────────
@@ -56,6 +59,15 @@ class GameDisplay:
         # ── Phase tracking ────────────────────────────────────────────
         self.phase = "COUNTDOWN"   # COUNTDOWN → PLAYING → GAME_OVER
 
+        # ── Music ─────────────────────────────────────────────────────
+        # Music starts at 16 seconds on the countdown to sync with
+        # the built-in countdown on the photon_tracks mp3 files
+        self.music         = MusicPlayer()
+        self.MUSIC_SYNC_AT = 16   # seconds remaining when music kicks in
+
+        # ── Music ─────────────────────────────────────────────────────
+        self.music = MusicPlayer()
+
         # ── UDP ───────────────────────────────────────────────────────
         self.udp_comm = UDPComm(
             ip="127.0.0.1",
@@ -75,6 +87,7 @@ class GameDisplay:
         self.score_labels: dict[int, tk.Label] = {}
 
         self._build_ui()
+        self.music.start()              # music starts with the countdown
         self._start_countdown(COUNTDOWN_SECONDS)
 
         # Sprint 4: start UDP listener thread
@@ -193,6 +206,10 @@ class GameDisplay:
                 text=f"Game starting in  {seconds}",
                 fg=color,
             )
+            # Start music at 16 seconds to sync with track's built-in countdown
+            if seconds == self.MUSIC_SYNC_AT:
+                self.music.start()
+                print(f"[Music] Started at {seconds}s remaining – synced to track countdown")
             self.root.after(1000, self._tick, seconds - 1)
         else:
             self._launch_game()
@@ -233,6 +250,7 @@ class GameDisplay:
     def _end_game(self):
         """Game over – show final scores and broadcast end code."""
         self.phase = "GAME_OVER"
+        self.music.stop()
         self.title_label.config(text="🏁  GAME OVER  🏁")
         self.timer_label.config(text="Final Scores Above", fg=HEADER_FG,
                                 font=("Arial", 22, "bold"))
@@ -296,6 +314,7 @@ class GameDisplay:
 
     def _on_close(self):
         self.phase = "GAME_OVER"   # stops the UDP listener loop
+        self.music.stop()
         try:
             if hasattr(self.udp_comm, "close"):
                 self.udp_comm.close()
