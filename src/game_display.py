@@ -200,11 +200,11 @@ class GameDisplay:
         except Exception as exc:
             print(f"Broadcast error: {exc}")
 
-        # Sprint 4: uncomment to enable 6-minute game timer
-        # self.root.after(2000, self._start_game_timer, GAME_DURATION)
+        # Sprint 4: 6-minute game timer
+        self.root.after(2000, self._start_game_timer, GAME_DURATION)
 
     def _start_game_timer(self, seconds: int):
-        """6-minute game clock (Sprint 4)."""
+        """6-minute game clock."""
         if self.phase != "PLAYING":
             return
         if seconds > 0:
