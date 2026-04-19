@@ -5,19 +5,9 @@ Software Engineering project for Jim Strother
 
 ## HOW-TO-RUN
 
-### INSTALL DEPENDENCIES (IMPORTANT)
+## Installation
 
-Make sure you have Python3 installed. Make sure you have updated PostgreSQL. Make sure you have psycopg2 installed. Make sure you have Tkinter installed. Make sure you have Pillow (PIL) installed.
-
-You can install dependencies automatically using the included install script (recommended), or manually using the steps below.
-
----
-
-### OPTION 1: Automatic Installation Script (Recommended)
-
-The install script will automatically install all required dependencies, configure PostgreSQL, and create the required database and table.
-
-Run the following in your Linux terminal:
+### Option 1: Automatic Install (Recommended)
 
 ```bash
 cd photon-laser-tag
@@ -25,126 +15,260 @@ chmod +x install.sh
 ./install.sh
 ```
 
-### OPTION 2: Manual Installation
+---
 
-To do the above steps manually, run these in your Linux terminal and enter Y when prompted (you might need to enter your password, for us, it is student):
+### Option 2: Manual Install
+
 ```bash
 sudo apt update
 sudo apt upgrade
-sudo apt install python3 python3-pip python3-tk
+
+sudo apt install -y \
+    python3 python3-pip python3-tk \
+    postgresql libpq-dev \
+    python3-psycopg2 python3-pil python3-pil.imagetk \
+    netcat-openbsd
+
+pip install pillow psycopg2-binary pygame
 ```
 
-Verify Python runs by running the following in your terminal:
+Verify Python:
+
 ```bash
 python3 --version
 ```
 
-Next, we will update PostgreSQL and install dependencies for the application.
+---
 
-Run the following in your Linux terminal:
+## Database
+
+The project uses the instructor-provided PostgreSQL setup:
+
+- Database: `photon`
+- Table: `players`
+
+Start PostgreSQL if needed:
+
 ```bash
-sudo apt-get update
-sudo apt-get install postgresql libpq-dev
-sudo apt-get install python3-psycopg2 python3-pil python3-pil.imagetk
+sudo systemctl start postgresql
 ```
 
-REQUIRED:
+---
+
+## How to Run
+
+From the project root:
+
 ```bash
-pip install psycopg2
+python3 main.py
 ```
 
+---
 
+## How to Use
 
-## TO RUN
+### Startup Flow
+1. Splash screen displays for 3 seconds  
+2. Player entry screen appears automatically  
 
-### PRIMARY METHOD
-1. Open Terminal
-2. Navigate to the project directory
-3. Navigate to src folder: `cd src`
-4. Run: `python3 main.py`
+---
 
-### ALTERNATE METHOD
-1. Open Terminal
-2. Navigate directly to src directory: `cd /home/student/Desktop/photon-main/src/`
-3. Run: `python3 main.py`
+### Player Entry
 
-## HOW TO USE
+1. Enter **Player ID**
+   - If found → codename auto-fills  
+   - If not → enter new codename (saved to DB)  
 
-1. Application starts with splash screen (displays for 3 seconds)
-2. Player entry screen opens automatically
-3. Enter EQUIPMENT ID (numeric value, ex: 42)
-4. Enter CODENAME for the player
-5. Assign players to RED TEAM (left side) or GREEN TEAM (right side)
-6. Click "Add Players to DB" button to save all entered players to database and broadcast equipment codes via UDP
-7. Click "Change Socket Settings" to configure UDP network settings (IP address, send port, receive port)
-8. Click "START GAME" button to begin the game
-9. Click "Clear All Players" to remove all entries from the form
+2. Enter **Equipment ID** (must be an integer)  
 
-### UDP Broadcasting
-- Equipment codes are automatically broadcast via UDP when players are added
-- Default settings: IP 127.0.0.1, Send Port 7500, Receive Port 7501
-- Change settings using "Change Socket Settings" button
+3. Assign player to:
+   - Red Team (left)
+   - Green Team (right)
+
+4. Repeat for up to **15 players per team**
+
+---
+
+### Controls
+
+- **F5 / Start Button** → Start game  
+- **F12 / Clear Button** → Clear all players  
+
+---
+
+### Gameplay
+
+After starting:
+
+- 30-second countdown begins  
+- Game automatically starts  
+- Code `202` is broadcast  
+- 6-minute game timer runs  
+- Background music plays  
+
+---
+
+### Scoring Rules
+
+| Event | Points |
+|------|-------|
+| Opponent hit | +10 |
+| Friendly fire | -10 (both players) |
+| Base capture | +100 |
+
+---
+
+### Base Events
+
+- `53` → Red base scored  
+- `43` → Green base scored  
+
+Correct player receives:
+- +100 points  
+- Base icon displayed next to name  
+
+---
+
+### Game End
+
+- Code `221` is broadcast **three times**  
+- Final scores displayed  
+- Button appears to return to player entry screen  
+
+---
+
+## UDP Networking
+
+### Default Settings
+
+- Address: `127.0.0.1`  
+- Send Port: `7500`  
+- Receive Port: `7501`  
+
+---
+
+### Data Formats
+
+**Outgoing:**
+```
+<equipment_id>
+```
+
+**Incoming:**
+```
+attacker_id:target_id
+```
+
+---
+
+### Example Test Commands
+
+```bash
+echo -n "1001:2001" | nc -u 127.0.0.1 7501
+echo -n "1001:43"   | nc -u 127.0.0.1 7501
+echo -n "221"       | nc -u 127.0.0.1 7501
+```
+
+---
+
+## Testing
+
+Monitor outgoing UDP:
+
+```bash
+nc -ul 7500
+```
+
+Simulate gameplay:
+
+```bash
+echo -n "1001:2001" | nc -u 127.0.0.1 7501
+```
+
+---
+
+## Features
+
+- Splash screen (3 seconds)
+- Player entry with PostgreSQL integration
+- Automatic database insertion for new players
+- UDP communication (send + receive)
+- Equipment ID broadcasting
+- Countdown timer
+- 6-minute gameplay timer
+- Real-time play-by-play updates
+- Live cumulative team scores
+- Individual scores sorted highest to lowest
+- Flashing leading team
+- Base scoring with icon display
+- Background music during gameplay
+- End-of-game return button
+
+---
+
+## Project Structure
+
+```
+photon-laser-tag/
+├── main.py
+├── splash_screen.py
+├── player_entry.py
+├── game_display.py
+├── udp_comm.py
+├── music_player.py
+├── logo.jpg
+├── baseicon.jpg
+├── install.sh
+├── README.md
+```
+
+---
 
 ## Team Members
 
-| GitHub Username | Real Name |
-|-----------------|-----------|
-| therealone1223  | Quinn Cornia |
-| Aran23          | Alonzo Rangel |
-| evionj     | Evion Jimerson |
-| takoma-coleman     | Takoma Coleman |
+| GitHub Username | Name |
+|----------------|------|
+| therealone1223 | Quinn Cornia |
+| Aran23         | Alonzo Rangel |
+| evionj         | Evion Jimerson |
+| takoma-coleman | Takoma Coleman |
 
-## Project Structure
-```
-photon-main/
-|- src/
-|  |- main.py              # Main application entry point
-|   |- splash_screen.py     # Splash screen with logo
-|   |- player_entry.py      # Player registration interface
-|   |- udp_comm.py          # UDP communication handler
-|- udp_files/               # UDP examples and documentation
-|- logo.jpg                 # Application logo
-|- player.sql               # Database schema
-|- README.md                # This file
-|- install.sh               # Installation script
-```
-
-## Features Completed (Sprint 2)
-
-- [x] Splash screen with logo display
-- [x] Player entry screen with Red/Green team setup
-- [x] Database integration with PostgreSQL
-- [x] UDP broadcasting of equipment codes after player addition
-- [x] Network configuration options for UDP sockets
-- [x] Add multiple players (up to 15 per team)
-- [x] Clear all players functionality
-- [x] Start game functionality
+---
 
 ## Troubleshooting
 
-### Database Connection Issues
-If you see "could not connect to database":
+### PostgreSQL not running
 ```bash
 sudo systemctl start postgresql
-psql -U student -d photon
 ```
 
-### Module Not Found Errors
-If you see "No module named 'tkinter'" or similar:
+---
+
+### Missing modules
 ```bash
 sudo apt install python3-tk python3-psycopg2 python3-pil python3-pil.imagetk
+pip install pillow pygame
 ```
 
-### Permission Denied
+---
+
+### Netcat not found
+```bash
+sudo apt install netcat-openbsd
+```
+
+---
+
+### Permission issues
 ```bash
 chmod +x install.sh
-chmod +x run.bash
 ```
+
+---
 
 ## Notes
 
-- Equipment IDs must be numeric
-- Codenames can be alphanumeric
-- UDP broadcasts occur automatically when players are added
-- Database updates occur when "Add Players to DB" is clicked
-- Each team can have up to 15 players
+- Equipment IDs must be integers  
+- Each team supports up to 15 players  
+- UDP communication occurs on localhost  
+- Game logic is event-driven via UDP messages 
