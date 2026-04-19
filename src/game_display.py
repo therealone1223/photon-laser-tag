@@ -18,6 +18,7 @@ import threading
 
 from udp_comm import UDPComm
 from music_player import MusicPlayer
+from PIL import Image, ImageTk
 
 
 # ─── Layout constants ─────────────────────────────────────────────────────────
@@ -53,8 +54,31 @@ class GameDisplay:
 
         # ── Score state ───────────────────────────────────────────────
         self.scores: dict[int, int] = {}
+        self.players = {}
+        self.team_map = {}
+
+        self.player_name_labels = {}
+
         for p in red_players + green_players:
             self.scores[p["hw_id"]] = 0
+
+        for p in red_players:
+            self.players[p["hw_id"]] = {
+                "name": p["name"],
+                "score": 0,
+                "team": "red",
+                "base": False
+            }
+            self.team_map[p["hw_id"]] = "red"
+
+        for p in green_players:
+            self.players[p["hw_id"]] = {
+                "name": p["name"],
+                "score": 0,
+                "team": "green",
+                "base": False
+            }
+            self.team_map[p["hw_id"]] = "green"
 
         # ── Phase tracking ────────────────────────────────────────────
         self.phase = "COUNTDOWN"   # COUNTDOWN → PLAYING → GAME_OVER
@@ -88,6 +112,12 @@ class GameDisplay:
             target=self._udp_listener, daemon=True
         )
         self._udp_thread.start()
+
+        # Base Icon
+        self.base_icon_img = Image.open("../baseicon.jpg")
+        self.base_icon_img = self.base_icon_img.resize((20, 20))
+        self.base_icon = ImageTk.PhotoImage(self.base_icon_img)
+
 
     # ═══════════════════════════════════════════════════════════════════
     #  UI CONSTRUCTION
@@ -155,14 +185,27 @@ class GameDisplay:
                  font=("Arial", 11), fg=HEADER_FG, bg=bg,
                  width=3, anchor="e").pack(side="left", padx=4)
 
-        tk.Label(row, text=player["name"],
-                 font=("Arial", 12, "bold"), fg=HEADER_FG, bg=bg,
-                 width=22, anchor="w").pack(side="left", padx=4)
+        name_frame = tk.Frame(row, bg=bg)
+        name_frame.pack(side="left", padx=4)
+
+        icon_label = tk.Label(name_frame, bg=bg)
+        icon_label.pack(side="left")
+
+        name_label = tk.Label(
+            name_frame,
+            text=player["name"],
+            font=("Arial", 12, "bold"),
+            fg=HEADER_FG,
+            bg=bg
+        )
+        name_label.pack(side="left")
 
         score_lbl = tk.Label(row, text="0",
                              font=("Arial", 12, "bold"), fg=SCORE_FG, bg=bg,
                              width=7, anchor="center")
         score_lbl.pack(side="left", padx=4)
+
+        self.player_name_labels[player["hw_id"]] = (icon_label, name_label)
         self.score_labels[player["hw_id"]] = score_lbl
 
     # ═══════════════════════════════════════════════════════════════════
@@ -252,16 +295,97 @@ class GameDisplay:
 
     def _udp_listener(self):
         while self.phase != "GAME_OVER":
-            try:
                 message = self.udp_comm.receive_message()
                 if message:
                     self._handle_udp_message(message)
-            except Exception:
-                pass
 
     def _handle_udp_message(self, message: str):
         print(f"UDP received: {message!r}")
-        # Sprint 4: scoring logic goes here
+
+        try:
+            if message == "221":
+                print("Game End Received")
+                self._end_game()
+                return
+
+            # Normal Format: attacker:target
+            attacker, target = message.split(":")
+            attacker = int(attacker)
+
+            # Base HITS
+            if target == "43":
+                self._handle_base_hit(attacker, "green")
+                return
+            if target == "53":
+                self._handle_base_hit(attacker, "red")
+                return
+
+            target = int(target)
+
+            self._handle_player_hit(attacker, target)
+
+        except Exception as e:
+            print("Error processing message:", e)
+
+    def _handle_player_hit(self, attacker, target):
+        if attacker not in self.players or target not in self.players:
+            return
+
+        attacker_team = self.team_map[attacker]
+        target_team = self.team_map[target]
+
+        # FRIENDLY FIRE
+        if attacker_team == target_team:
+            self.players[attacker]["score"] -= 10
+            self.players[target]["score"] -= 10
+
+            # REQUIRED: broadcast BOTH
+            self.udp_comm.broadcast_equipment_id(attacker)
+            self.udp_comm.broadcast_equipment_id(target)
+
+            print(f"FRIENDLY FIRE: {self.players[attacker]['name']}")
+
+        else:
+            self.players[attacker]["score"] += 10
+
+            # REQUIRED: broadcast HIT PLAYER
+            self.udp_comm.broadcast_equipment_id(target)
+
+            print(f"{self.players[attacker]['name']} hit {self.players[target]['name']}")
+
+        self._refresh_scores()
+
+    def _handle_base_hit(self, attacker, base_team):
+        if attacker not in self.players:
+            return
+
+        attacker_team = self.team_map[attacker]
+
+        if attacker_team != base_team:
+            self.players[attacker]["score"] += 100
+            self.players[attacker]["base"] = True
+
+            print(f"{self.players[attacker]['name']} captured base!")
+
+            # SHOW ICON
+            def update_icon():
+                if attacker in self.player_name_labels:
+                    icon_label, _ = self.player_name_labels[attacker]
+                    icon_label.config(image=self.base_icon)
+                    icon_label.image = self.base_icon
+
+            self.root.after(0, update_icon)
+
+            self._refresh_scores()
+
+    def _refresh_scores(self):
+        def update():
+            for hw_id, player in self.players.items():
+                if hw_id in self.score_labels:
+                    self.score_labels[hw_id].config(text=str(player["score"]))
+
+        self.root.after(0, update)
+
 
     # ═══════════════════════════════════════════════════════════════════
     #  CLEANUP
@@ -269,10 +393,17 @@ class GameDisplay:
 
     def _on_close(self):
         self.phase = "GAME_OVER"
-        self.music.stop()
+
         try:
-            if hasattr(self.udp_comm, "close"):
-                self.udp_comm.close()
-        except Exception:
+            self.music.stop()
+        except:
             pass
+
+        try:
+            self.udp_comm.close()
+        except:
+            pass
+
+        self.parent.game_open = False
+
         self.root.destroy()

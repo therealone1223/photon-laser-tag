@@ -24,8 +24,6 @@ class PlayerEntry:
         self.root.geometry("1400x750")
         self.root.configure(bg="black")
 
-        self.game_open = False
-
         # ── Key bindings ─────────────────────────────────────────
         self.root.bind("<F12>", lambda e: self.clear_all_players())
         self.root.bind("<F5>",  lambda e: self.start_game())
@@ -345,11 +343,6 @@ class PlayerEntry:
             f"  Red team:   {len(red_players)} player(s)\n"
             f"  Green team: {len(green_players)} player(s)",
         ):
-
-            if self.game_open:
-                return
-
-            self.game_open = True
             GameDisplay(self.root, red_players, green_players)
 
     def change_socket_settings(self):

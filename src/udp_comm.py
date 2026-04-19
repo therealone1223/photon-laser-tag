@@ -8,11 +8,14 @@ class UDPComm:
 
         # UDP Socket for Sending
         self.send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
         # UDP Socket for Receiving
         self.recv_sock = None
         if enable_receive:
             self.recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.recv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
             self.recv_sock.bind(("0.0.0.0", self.recv_port))
             # 1-second timeout so the listener thread can notice when the
             # game ends and exit cleanly instead of blocking forever
