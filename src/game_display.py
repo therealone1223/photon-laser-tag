@@ -4,16 +4,19 @@ Photon Laser Tag – Sprint 4
 
 Play-action display window:
   • Opens as a Toplevel over the player-entry screen
-  • Shows both team rosters with live score columns (ready for Sprint 4 events)
+  • Shows both team rosters with live score columns
   • 30-second countdown with large animated timer
   • Random MP3 music starts at 16s to sync with track's built-in countdown
   • Broadcasts equipment ID 202 when timer reaches zero ("GO!")
-  • UDP listener thread scaffolded for Sprint 4 hit events
+  • Handles hit events and base hits over UDP
   • Clean phase management: COUNTDOWN → PLAYING → GAME_OVER
+  • Displays cumulative team scores
+  • Displays individual scores highest-to-lowest on each team
+  • Flashes the leading team during play
+  • Shows a button to return to player entry after game ends
 """
 
 import tkinter as tk
-from tkinter import font as tkfont
 import threading
 
 from udp_comm import UDPComm
@@ -28,12 +31,12 @@ GREEN_BG = "#006400"
 HEADER_FG = "white"
 SCORE_FG = "#FFD700"
 TIMER_FG_NORMAL = "#FFD700"
-TIMER_FG_URGENT = "#FF3333"   # last 10 seconds turn red
+TIMER_FG_URGENT = "#FF3333"
 TIMER_FG_GO = "#00FF88"
 
 COUNTDOWN_SECONDS = 30
-GAME_DURATION = 360       # 6-minute game (Sprint 4 will use this)
-MUSIC_SYNC_AT = 17        # start music at this second to sync with track countdown
+GAME_DURATION = 360
+MUSIC_SYNC_AT = 17
 
 GAME_START_CODE = 202
 GAME_END_CODE = 221
@@ -43,7 +46,7 @@ class GameDisplay:
     """
     Main play-action window.
 
-    red_players / green_players  →  list of dicts:
+    red_players / green_players → list of dicts:
         {"hw_id": int, "player_id": int, "name": str}
     """
 
@@ -58,6 +61,15 @@ class GameDisplay:
         self.team_map = {}
 
         self.player_name_labels = {}
+        self.score_labels = {}
+
+        self.team_frames = {}
+        self.team_rows_container = {}
+        self.team_total_labels = {}
+        self.team_header_labels = {}
+
+        self.back_button = None
+        self.flash_state = False
 
         for p in red_players + green_players:
             self.scores[p["hw_id"]] = 0
@@ -81,9 +93,9 @@ class GameDisplay:
             self.team_map[p["hw_id"]] = "green"
 
         # ── Phase tracking ────────────────────────────────────────────
-        self.phase = "COUNTDOWN"   # COUNTDOWN → PLAYING → GAME_OVER
+        self.phase = "COUNTDOWN"
 
-        # ── Music (single instance, started at MUSIC_SYNC_AT seconds) ─
+        # ── Music ─────────────────────────────────────────────────────
         self.music = MusicPlayer()
 
         # ── UDP ───────────────────────────────────────────────────────
@@ -101,27 +113,27 @@ class GameDisplay:
         self.root.configure(bg=BG_COLOR)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-        # Score label references  {hw_id: tk.Label}
-        self.score_labels: dict[int, tk.Label] = {}
-
         self._build_ui()
-        # music starts inside _tick at 16s
         self._start_countdown(COUNTDOWN_SECONDS)
 
         # UDP listener thread
         self._udp_thread = threading.Thread(
-            target=self._udp_listener, daemon=True
+            target=self._udp_listener,
+            daemon=True
         )
         self._udp_thread.start()
 
-        # Base Icon
-        self.base_icon_img = Image.open("../baseicon.jpg")
-        self.base_icon_img = self.base_icon_img.resize((20, 20))
-        self.base_icon = ImageTk.PhotoImage(self.base_icon_img)
-
+        # Base icon
+        self.base_icon = None
+        try:
+            self.base_icon_img = Image.open("../baseicon.jpg")
+            self.base_icon_img = self.base_icon_img.resize((20, 20))
+            self.base_icon = ImageTk.PhotoImage(self.base_icon_img)
+        except Exception as exc:
+            print(f"Could not load base icon: {exc}")
 
     # ═══════════════════════════════════════════════════════════════════
-    #  UI CONSTRUCTION
+    # UI CONSTRUCTION
     # ═══════════════════════════════════════════════════════════════════
 
     def _build_ui(self):
@@ -137,10 +149,12 @@ class GameDisplay:
         panels_frame = tk.Frame(self.root, bg=BG_COLOR)
         panels_frame.pack(expand=True, fill="both", padx=30, pady=5)
 
-        self._build_team_panel(panels_frame, "RED TEAM",
-                               self.red_players, RED_BG, column=0)
-        self._build_team_panel(panels_frame, "GREEN TEAM",
-                               self.green_players, GREEN_BG, column=1)
+        self._build_team_panel(
+            panels_frame, "RED TEAM", self.red_players, RED_BG, column=0, team_key="red"
+        )
+        self._build_team_panel(
+            panels_frame, "GREEN TEAM", self.green_players, GREEN_BG, column=1, team_key="green"
+        )
 
         panels_frame.columnconfigure(0, weight=1)
         panels_frame.columnconfigure(1, weight=1)
@@ -155,42 +169,97 @@ class GameDisplay:
         )
         self.timer_label.pack(pady=15)
 
-    def _build_team_panel(self, parent, title, players, bg, column):
+    def _build_team_panel(self, parent, title, players, bg, column, team_key=None):
         frame = tk.Frame(parent, bg=bg, relief="raised", bd=3)
         frame.grid(row=0, column=column, padx=15, sticky="nsew")
 
-        tk.Label(frame, text=title,
-                 font=("Arial", 20, "bold"), fg=HEADER_FG, bg=bg).pack(pady=(12, 4))
+        header_label = tk.Label(
+            frame,
+            text=title,
+            font=("Arial", 20, "bold"),
+            fg=HEADER_FG,
+            bg=bg
+        )
+        header_label.pack(pady=(12, 4))
+
+        total_label = tk.Label(
+            frame,
+            text="Team Score: 0",
+            font=("Arial", 14, "bold"),
+            fg=SCORE_FG,
+            bg=bg
+        )
+        total_label.pack(pady=(0, 8))
 
         hdr_row = tk.Frame(frame, bg=bg)
         hdr_row.pack(fill="x", padx=15, pady=(0, 4))
-        for txt, w, anchor in [("#", 3, "e"), ("Codename", 22, "w"), ("Score", 7, "center")]:
-            tk.Label(hdr_row, text=txt,
-                     font=("Arial", 10, "underline"),
-                     fg=HEADER_FG, bg=bg, width=w, anchor=anchor).pack(side="left", padx=4)
+
+        for txt, w, anchor in [
+            ("#", 3, "e"),
+            ("Codename", 22, "w"),
+            ("Score", 7, "center")
+        ]:
+            tk.Label(
+                hdr_row,
+                text=txt,
+                font=("Arial", 10, "underline"),
+                fg=HEADER_FG,
+                bg=bg,
+                width=w,
+                anchor=anchor
+            ).pack(side="left", padx=4)
 
         tk.Frame(frame, bg=HEADER_FG, height=1).pack(fill="x", padx=10)
 
+        rows_container = tk.Frame(frame, bg=bg)
+        rows_container.pack(fill="both", expand=True, padx=5, pady=5)
+
+        if team_key:
+            self.team_frames[team_key] = frame
+            self.team_rows_container[team_key] = rows_container
+            self.team_total_labels[team_key] = total_label
+            self.team_header_labels[team_key] = header_label
+
         if players:
-            for idx, player in enumerate(players, start=1):
-                self._build_player_row(frame, idx, player, bg)
+            sorted_players = sorted(
+                players,
+                key=lambda p: self.players[p["hw_id"]]["score"],
+                reverse=True
+            )
+            for idx, player in enumerate(sorted_players, start=1):
+                self._build_player_row(rows_container, idx, player, bg)
         else:
-            tk.Label(frame, text="(no players)",
-                     font=("Arial", 11, "italic"), fg="#aaaaaa", bg=bg).pack(pady=20)
+            tk.Label(
+                rows_container,
+                text="(no players)",
+                font=("Arial", 11, "italic"),
+                fg="#aaaaaa",
+                bg=bg
+            ).pack(pady=20)
 
     def _build_player_row(self, parent, index, player, bg):
         row = tk.Frame(parent, bg=bg)
         row.pack(fill="x", padx=15, pady=2)
 
-        tk.Label(row, text=f"{index:2d}.",
-                 font=("Arial", 11), fg=HEADER_FG, bg=bg,
-                 width=3, anchor="e").pack(side="left", padx=4)
+        tk.Label(
+            row,
+            text=f"{index:2d}.",
+            font=("Arial", 11),
+            fg=HEADER_FG,
+            bg=bg,
+            width=3,
+            anchor="e"
+        ).pack(side="left", padx=4)
 
         name_frame = tk.Frame(row, bg=bg)
         name_frame.pack(side="left", padx=4)
 
         icon_label = tk.Label(name_frame, bg=bg)
         icon_label.pack(side="left")
+
+        if self.players[player["hw_id"]]["base"] and self.base_icon is not None:
+            icon_label.config(image=self.base_icon)
+            icon_label.image = self.base_icon
 
         name_label = tk.Label(
             name_frame,
@@ -201,16 +270,22 @@ class GameDisplay:
         )
         name_label.pack(side="left")
 
-        score_lbl = tk.Label(row, text="0",
-                             font=("Arial", 12, "bold"), fg=SCORE_FG, bg=bg,
-                             width=7, anchor="center")
+        score_lbl = tk.Label(
+            row,
+            text=str(self.players[player["hw_id"]]["score"]),
+            font=("Arial", 12, "bold"),
+            fg=SCORE_FG,
+            bg=bg,
+            width=7,
+            anchor="center"
+        )
         score_lbl.pack(side="left", padx=4)
 
         self.player_name_labels[player["hw_id"]] = (icon_label, name_label)
         self.score_labels[player["hw_id"]] = score_lbl
 
     # ═══════════════════════════════════════════════════════════════════
-    #  COUNTDOWN TIMER
+    # COUNTDOWN TIMER
     # ═══════════════════════════════════════════════════════════════════
 
     def _start_countdown(self, seconds: int):
@@ -223,11 +298,10 @@ class GameDisplay:
                 text=f"Game starting in  {seconds}",
                 fg=color,
             )
-            # Start music exactly once at MUSIC_SYNC_AT to sync with track countdown
+
             if seconds == MUSIC_SYNC_AT:
                 self.music.start()
-                print(
-                    f"[Music] Started at {seconds}s – synced to track countdown")
+                print(f"[Music] Started at {seconds}s – synced to track countdown")
 
             self.root.after(1000, self._tick, seconds - 1)
         else:
@@ -237,21 +311,26 @@ class GameDisplay:
         """Countdown hit zero — broadcast start code."""
         self.phase = "PLAYING"
         self.title_label.config(text="⚡  GAME IN PROGRESS  ⚡")
-        self.timer_label.config(text="GO!", fg=TIMER_FG_GO,
-                                font=("Arial", 36, "bold"))
+        self.timer_label.config(
+            text="GO!",
+            fg=TIMER_FG_GO,
+            font=("Arial", 36, "bold")
+        )
+
         try:
             self.udp_comm.broadcast_equipment_id(GAME_START_CODE)
             print(f"Broadcasted game start code: {GAME_START_CODE}")
         except Exception as exc:
             print(f"Broadcast error: {exc}")
 
-        # Sprint 4: 6-minute game timer
+        self._flash_leading_team()
         self.root.after(2000, self._start_game_timer, GAME_DURATION)
 
     def _start_game_timer(self, seconds: int):
         """6-minute game clock."""
         if self.phase != "PLAYING":
             return
+
         if seconds > 0:
             mins, secs = divmod(seconds, 60)
             self.timer_label.config(
@@ -265,41 +344,151 @@ class GameDisplay:
 
     def _end_game(self):
         """Game over — stop music, show scores, broadcast end code."""
+        if self.phase == "GAME_OVER":
+            return
+
         self.phase = "GAME_OVER"
-        self.music.stop()
-        self.title_label.config(text="🏁  GAME OVER  🏁")
-        self.timer_label.config(text="Final Scores Above", fg=HEADER_FG,
-                                font=("Arial", 22, "bold"))
+
         try:
-            self.udp_comm.broadcast_equipment_id(GAME_END_CODE)
-            print(f"Broadcasted game end code: {GAME_END_CODE}")
+            self.music.stop()
+        except Exception:
+            pass
+
+        self.title_label.config(text="🏁  GAME OVER  🏁")
+        self.timer_label.config(
+            text="Final Scores Above",
+            fg=HEADER_FG,
+            font=("Arial", 22, "bold")
+        )
+
+        try:
+            for _ in range(3):
+                self.udp_comm.broadcast_equipment_id(GAME_END_CODE)
+            print(f"Broadcasted game end code: {GAME_END_CODE} x3")
         except Exception as exc:
             print(f"Broadcast error: {exc}")
 
+        self._refresh_scores()
+
+        if self.back_button is None:
+            self.back_button = tk.Button(
+                self.root,
+                text="Back to Player Entry",
+                font=("Arial", 14, "bold"),
+                command=self._return_to_entry,
+                bg="#dddddd",
+                fg="black",
+                padx=12,
+                pady=8
+            )
+            self.back_button.pack(pady=15)
+
     # ═══════════════════════════════════════════════════════════════════
-    #  SCORE UPDATES
+    # SCORE UPDATES
     # ═══════════════════════════════════════════════════════════════════
 
     def update_score(self, hw_id: int, delta: int = 1):
-        if hw_id not in self.scores:
+        if hw_id not in self.players:
             return
-        self.scores[hw_id] += delta
 
-        def _refresh():
-            if hw_id in self.score_labels:
-                self.score_labels[hw_id].config(text=str(self.scores[hw_id]))
+        self.players[hw_id]["score"] += delta
+        self._refresh_scores()
 
-        self.root.after(0, _refresh)
+    def _rebuild_team_rows(self, team_key):
+        container = self.team_rows_container.get(team_key)
+        if not container:
+            return
+
+        bg = RED_BG if team_key == "red" else GREEN_BG
+        team_players = self.red_players if team_key == "red" else self.green_players
+
+        for widget in container.winfo_children():
+            widget.destroy()
+
+        sorted_players = sorted(
+            team_players,
+            key=lambda p: self.players[p["hw_id"]]["score"],
+            reverse=True
+        )
+
+        if sorted_players:
+            for idx, player in enumerate(sorted_players, start=1):
+                self._build_player_row(container, idx, player, bg)
+        else:
+            tk.Label(
+                container,
+                text="(no players)",
+                font=("Arial", 11, "italic"),
+                fg="#aaaaaa",
+                bg=bg
+            ).pack(pady=20)
+
+    def _refresh_scores(self):
+        def update():
+            red_total = sum(self.players[p["hw_id"]]["score"] for p in self.red_players)
+            green_total = sum(self.players[p["hw_id"]]["score"] for p in self.green_players)
+
+            if "red" in self.team_total_labels:
+                self.team_total_labels["red"].config(text=f"Team Score: {red_total}")
+            if "green" in self.team_total_labels:
+                self.team_total_labels["green"].config(text=f"Team Score: {green_total}")
+
+            self._rebuild_team_rows("red")
+            self._rebuild_team_rows("green")
+
+        self.root.after(0, update)
+
+    def _flash_leading_team(self):
+        if self.phase != "PLAYING":
+            return
+
+        red_total = sum(self.players[p["hw_id"]]["score"] for p in self.red_players)
+        green_total = sum(self.players[p["hw_id"]]["score"] for p in self.green_players)
+
+        self.flash_state = not self.flash_state
+
+        red_header = self.team_header_labels.get("red")
+        green_header = self.team_header_labels.get("green")
+        red_total_lbl = self.team_total_labels.get("red")
+        green_total_lbl = self.team_total_labels.get("green")
+
+        if red_header:
+            red_header.config(fg=HEADER_FG)
+        if green_header:
+            green_header.config(fg=HEADER_FG)
+        if red_total_lbl:
+            red_total_lbl.config(fg=SCORE_FG)
+        if green_total_lbl:
+            green_total_lbl.config(fg=SCORE_FG)
+
+        if red_total > green_total:
+            flash_color = "#FFFFFF" if self.flash_state else "#FFD700"
+            if red_header:
+                red_header.config(fg=flash_color)
+            if red_total_lbl:
+                red_total_lbl.config(fg=flash_color)
+
+        elif green_total > red_total:
+            flash_color = "#FFFFFF" if self.flash_state else "#FFD700"
+            if green_header:
+                green_header.config(fg=flash_color)
+            if green_total_lbl:
+                green_total_lbl.config(fg=flash_color)
+
+        self.root.after(500, self._flash_leading_team)
 
     # ═══════════════════════════════════════════════════════════════════
-    #  UDP LISTENER
+    # UDP LISTENER
     # ═══════════════════════════════════════════════════════════════════
 
     def _udp_listener(self):
         while self.phase != "GAME_OVER":
+            try:
                 message = self.udp_comm.receive_message()
                 if message:
                     self._handle_udp_message(message)
+            except Exception as exc:
+                print(f"UDP listener error: {exc}")
 
     def _handle_udp_message(self, message: str):
         print(f"UDP received: {message!r}")
@@ -310,20 +499,18 @@ class GameDisplay:
                 self._end_game()
                 return
 
-            # Normal Format: attacker:target
             attacker, target = message.split(":")
             attacker = int(attacker)
 
-            # Base HITS
             if target == "43":
                 self._handle_base_hit(attacker, "green")
                 return
+
             if target == "53":
                 self._handle_base_hit(attacker, "red")
                 return
 
             target = int(target)
-
             self._handle_player_hit(attacker, target)
 
         except Exception as e:
@@ -336,22 +523,25 @@ class GameDisplay:
         attacker_team = self.team_map[attacker]
         target_team = self.team_map[target]
 
-        # FRIENDLY FIRE
         if attacker_team == target_team:
             self.players[attacker]["score"] -= 10
             self.players[target]["score"] -= 10
 
-            # REQUIRED: broadcast BOTH
-            self.udp_comm.broadcast_equipment_id(attacker)
-            self.udp_comm.broadcast_equipment_id(target)
+            try:
+                self.udp_comm.broadcast_equipment_id(attacker)
+                self.udp_comm.broadcast_equipment_id(target)
+            except Exception as exc:
+                print(f"Broadcast error: {exc}")
 
-            print(f"FRIENDLY FIRE: {self.players[attacker]['name']}")
+            print(f"FRIENDLY FIRE: {self.players[attacker]['name']} hit teammate")
 
         else:
             self.players[attacker]["score"] += 10
 
-            # REQUIRED: broadcast HIT PLAYER
-            self.udp_comm.broadcast_equipment_id(target)
+            try:
+                self.udp_comm.broadcast_equipment_id(target)
+            except Exception as exc:
+                print(f"Broadcast error: {exc}")
 
             print(f"{self.players[attacker]['name']} hit {self.players[target]['name']}")
 
@@ -369,43 +559,49 @@ class GameDisplay:
 
             print(f"{self.players[attacker]['name']} captured base!")
 
-            # SHOW ICON
             def update_icon():
-                if attacker in self.player_name_labels:
+                if attacker in self.player_name_labels and self.base_icon is not None:
                     icon_label, _ = self.player_name_labels[attacker]
                     icon_label.config(image=self.base_icon)
                     icon_label.image = self.base_icon
 
             self.root.after(0, update_icon)
-
             self._refresh_scores()
 
-    def _refresh_scores(self):
-        def update():
-            for hw_id, player in self.players.items():
-                if hw_id in self.score_labels:
-                    self.score_labels[hw_id].config(text=str(player["score"]))
-
-        self.root.after(0, update)
-
-
     # ═══════════════════════════════════════════════════════════════════
-    #  CLEANUP
+    # CLEANUP / RETURN
     # ═══════════════════════════════════════════════════════════════════
+
+    def _return_to_entry(self):
+        try:
+            self.music.stop()
+        except Exception:
+            pass
+
+        try:
+            self.udp_comm.close()
+        except Exception:
+            pass
+
+        if hasattr(self.parent, "game_open"):
+            self.parent.game_open = False
+
+        self.root.destroy()
 
     def _on_close(self):
         self.phase = "GAME_OVER"
 
         try:
             self.music.stop()
-        except:
+        except Exception:
             pass
 
         try:
             self.udp_comm.close()
-        except:
+        except Exception:
             pass
 
-        self.parent.game_open = False
+        if hasattr(self.parent, "game_open"):
+            self.parent.game_open = False
 
         self.root.destroy()
