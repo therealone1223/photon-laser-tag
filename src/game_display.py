@@ -22,21 +22,21 @@ from PIL import Image, ImageTk
 
 
 # ─── Layout constants ─────────────────────────────────────────────────────────
-BG_COLOR        = "black"
-RED_BG          = "#8B0000"
-GREEN_BG        = "#006400"
-HEADER_FG       = "white"
-SCORE_FG        = "#FFD700"
+BG_COLOR = "black"
+RED_BG = "#8B0000"
+GREEN_BG = "#006400"
+HEADER_FG = "white"
+SCORE_FG = "#FFD700"
 TIMER_FG_NORMAL = "#FFD700"
 TIMER_FG_URGENT = "#FF3333"   # last 10 seconds turn red
-TIMER_FG_GO     = "#00FF88"
+TIMER_FG_GO = "#00FF88"
 
 COUNTDOWN_SECONDS = 30
-GAME_DURATION     = 360       # 6-minute game (Sprint 4 will use this)
-MUSIC_SYNC_AT     = 17        # start music at this second to sync with track countdown
+GAME_DURATION = 360       # 6-minute game (Sprint 4 will use this)
+MUSIC_SYNC_AT = 17        # start music at this second to sync with track countdown
 
 GAME_START_CODE = 202
-GAME_END_CODE   = 221
+GAME_END_CODE = 221
 
 
 class GameDisplay:
@@ -48,8 +48,8 @@ class GameDisplay:
     """
 
     def __init__(self, parent, red_players: list, green_players: list):
-        self.parent        = parent
-        self.red_players   = red_players
+        self.parent = parent
+        self.red_players = red_players
         self.green_players = green_players
 
         # ── Score state ───────────────────────────────────────────────
@@ -105,7 +105,8 @@ class GameDisplay:
         self.score_labels: dict[int, tk.Label] = {}
 
         self._build_ui()
-        self._start_countdown(COUNTDOWN_SECONDS)   # music starts inside _tick at 16s
+        # music starts inside _tick at 16s
+        self._start_countdown(COUNTDOWN_SECONDS)
 
         # UDP listener thread
         self._udp_thread = threading.Thread(
@@ -225,7 +226,8 @@ class GameDisplay:
             # Start music exactly once at MUSIC_SYNC_AT to sync with track countdown
             if seconds == MUSIC_SYNC_AT:
                 self.music.start()
-                print(f"[Music] Started at {seconds}s – synced to track countdown")
+                print(
+                    f"[Music] Started at {seconds}s – synced to track countdown")
 
             self.root.after(1000, self._tick, seconds - 1)
         else:
@@ -243,11 +245,11 @@ class GameDisplay:
         except Exception as exc:
             print(f"Broadcast error: {exc}")
 
-        # Sprint 4: uncomment to enable 6-minute game timer
-        # self.root.after(2000, self._start_game_timer, GAME_DURATION)
+        # Sprint 4: 6-minute game timer
+        self.root.after(2000, self._start_game_timer, GAME_DURATION)
 
     def _start_game_timer(self, seconds: int):
-        """6-minute game clock (Sprint 4)."""
+        """6-minute game clock."""
         if self.phase != "PLAYING":
             return
         if seconds > 0:
